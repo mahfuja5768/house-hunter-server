@@ -87,7 +87,7 @@ async function run() {
     });
 
     //book a property
-    app.post("/bookings", verifyToken, async (req, res) => {
+    app.post("/bookings", async (req, res) => {
       try {
         const property = req.body;
         const result = await bookingCollection.insertOne(property);
@@ -98,7 +98,7 @@ async function run() {
     });
 
     //get a booked property
-    app.get("/bookings/:id", verifyToken, async (req, res) => {
+    app.get("/bookings/:id", async (req, res) => {
       try {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
@@ -110,7 +110,7 @@ async function run() {
     });
 
     //get booked properties for users
-    app.get("/bookings/:email", verifyToken, async (req, res) => {
+    app.get("/bookings/:email", async (req, res) => {
       try {
         const email = req.params.email;
         const query = { buyerEmail: email };
