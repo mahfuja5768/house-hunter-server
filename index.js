@@ -26,6 +26,7 @@ async function run() {
       .db("houseHunter")
       .collection("properties");
     const usersCollection = client.db("houseHunter").collection("users");
+    const bookingCollection = client.db("houseHunter").collection("bookings");
 
     //post users
     app.post("/users", async (req, res) => {
@@ -40,6 +41,7 @@ async function run() {
       }
     });
 
+    //for user login
     app.post("/login", async (req, res) => {
       const user = req.body;
       if (user.password && user.email) {
@@ -52,6 +54,70 @@ async function run() {
         } else {
           res.send({ message: "No user Found" });
         }
+      }
+    });
+
+    // get properties
+    app.get("/properties", async (req, res) => {
+      try {
+        const page = parseInt(req.query.page);
+        const size = parseInt(req.query.size);
+        const properties = await propertyCollection
+          .find()
+          .skip(page * size)
+          .limit(size)
+          .toArray();
+        // console.log(properties)
+        res.send(properties);
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    //get single properties
+    app.get("/properties/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await propertyCollection.findOne(query);
+        res.send(result);
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    //book a property
+    app.post("/bookings", verifyToken, async (req, res) => {
+      try {
+        const property = req.body;
+        const result = await bookingCollection.insertOne(property);
+        res.send(result);
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    //get a booked property
+    app.get("/bookings/:id", verifyToken, async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await bookingCollection.find(query).toArray();
+        res.send(result);
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    //get booked properties for users
+    app.get("/bookings/:email", verifyToken, async (req, res) => {
+      try {
+        const email = req.params.email;
+        const query = { buyerEmail: email };
+        const properties = await bookingCollection.find(query).toArray();
+        res.send(properties);
+      } catch (error) {
+        console.log(error);
       }
     });
 
