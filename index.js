@@ -4,7 +4,7 @@ const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 8000;
 
 app.use(cors());
 app.use(express.json());
@@ -57,6 +57,22 @@ async function run() {
       }
     });
 
+    app.get("/search/:key", async (req, res) => {
+      const result = await propertyCollection
+        .find({
+          $or: [
+            { city: { $regex: req.params.key, $options: "i" } },
+            { rent_per_month: { $eq: parseInt(req.params.key) } },
+            { room_size: { $eq: parseInt(req.params.key) } },
+            { bathrooms: { $eq: parseInt(req.params.key) } },
+            { bedrooms: { $eq: parseInt(req.params.key) } },
+          ],
+        })
+        .toArray();
+
+      res.send(result);
+    });
+
     // get properties
     app.get("/properties", async (req, res) => {
       try {
@@ -89,7 +105,30 @@ async function run() {
     //book a property
     app.post("/bookings", async (req, res) => {
       try {
+        const MAX_BOOKINGS_ALLOWED = 2;
         const property = req.body;
+        const userEmail = property.userEmail;
+        const propertyId = property.propertyId;
+        const existingBooking = await bookingCollection.findOne({
+          userEmail,
+          propertyId,
+        });
+
+        if (existingBooking) {
+          return res.send({
+            message: "You have already booked this property.",
+          });
+        }
+
+        const existingBookingsCount = await bookingCollection.countDocuments({
+          userEmail,
+        });
+
+        if (existingBookingsCount >= MAX_BOOKINGS_ALLOWED) {
+          return res.send({
+            message: "Maximum bookings reached for this user's email.",
+          });
+        }
         const result = await bookingCollection.insertOne(property);
         res.send(result);
       } catch (error) {
@@ -97,11 +136,11 @@ async function run() {
       }
     });
 
-    //get a booked property
-    app.get("/bookings/:id", async (req, res) => {
+    //get booked properties for users
+    app.get("/bookings-for-users", async (req, res) => {
       try {
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
+        const email = req.query?.email;
+        const query = { userEmail: email };
         const result = await bookingCollection.find(query).toArray();
         res.send(result);
       } catch (error) {
@@ -109,13 +148,76 @@ async function run() {
       }
     });
 
-    //get booked properties for users
-    app.get("/bookings/:email", async (req, res) => {
+    //delete booked property
+    app.delete("/bookings/:id", async (req, res) => {
       try {
-        const email = req.params.email;
-        const query = { buyerEmail: email };
-        const properties = await bookingCollection.find(query).toArray();
-        res.send(properties);
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await bookingCollection.deleteOne(query);
+        res.send(result);
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    // admin post new properties
+    app.post("/admin-properties", async (req, res) => {
+      try {
+        const property = req.body;
+        const result = await propertyCollection.insertOne(property);
+        res.send(result);
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    // get admin added properties
+    app.get("/admin-properties", async (req, res) => {
+      try {
+        const email = req.query?.email;
+        const query = { email: email };
+        const result = await propertyCollection.find(query).toArray();
+        res.send(result);
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    //update property by admin
+    app.patch("/admin-properties/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const property = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            address: property.address,
+            availability_date: property.availability_date,
+            bathrooms: property.bathrooms,
+            bedrooms: property.bedrooms,
+            city: property.city,
+            description: property.description,
+            phone_number: property.phone_number,
+            rent_per_month: property.rent_per_month,
+            room_size: property.room_size,
+          },
+        };
+        console.log(updatedDoc);
+        const result = await propertyCollection.updateOne(filter, updatedDoc);
+        console.log(result);
+        res.send(result);
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    // admin delete properties
+    app.delete("/admin-properties/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await propertyCollection.deleteOne(query);
+        res.send(result);
       } catch (error) {
         console.log(error);
       }
