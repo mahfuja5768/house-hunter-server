@@ -3,8 +3,8 @@ require("dotenv").config();
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
-
-const port = process.env.PORT || 8000;
+const jwt = require("jsonwebtoken");
+const port = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
@@ -28,6 +28,23 @@ async function run() {
     const usersCollection = client.db("houseHunter").collection("users");
     const bookingCollection = client.db("houseHunter").collection("bookings");
 
+    //verify Token
+    const verifyToken = (req, res, next) => {
+      let token = req.headers['authorization'];
+      console.log(token);
+      if (token) {
+        token = token.split(" ")[1];
+        jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, valid) => {
+          if (err) {
+            return res.status(401).send({ message: "Unauthorized access" });
+          } else {
+            next();
+          }
+        });
+      } else {
+        res.status(403).send({ message: "Unauthorized access" });
+      }
+    };
     //post users
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -43,17 +60,32 @@ async function run() {
 
     //for user login
     app.post("/login", async (req, res) => {
-      const user = req.body;
-      if (user.password && user.email) {
-        const query = { email: user.email, password: user.password };
-        const loginAUser = await usersCollection.findOne(query, {
+      const userInfo = req.body;
+      if (userInfo.password && userInfo.email) {
+        const query = { email: userInfo.email, password: userInfo.password };
+        let user = await usersCollection.findOne(query, {
           projection: { password: 0, phnNum: 0, _id: 0 },
         });
-        if (loginAUser) {
-          res.send(loginAUser);
+        if (user) {
+          jwt.sign(
+            { user },
+            process.env.ACCESS_TOKEN_SECRET,
+            {
+              expiresIn: "365d",
+            },
+            (err, token) => {
+              if (err) {
+                res.send({ message: "Something went wrong" });
+              }
+              console.log("p----->", token);
+              return res.send({ user, auth: token });
+            }
+          );
         } else {
           res.send({ message: "No user Found" });
         }
+      } else {
+        res.send({ message: "No user Found" });
       }
     });
 
@@ -103,7 +135,7 @@ async function run() {
     });
 
     //book a property
-    app.post("/bookings", async (req, res) => {
+    app.post("/bookings", verifyToken, async (req, res) => {
       try {
         const MAX_BOOKINGS_ALLOWED = 2;
         const property = req.body;
@@ -137,7 +169,7 @@ async function run() {
     });
 
     //get booked properties for users
-    app.get("/bookings-for-users", async (req, res) => {
+    app.get("/bookings-for-users", verifyToken, async (req, res) => {
       try {
         const email = req.query?.email;
         const query = { userEmail: email };
@@ -148,8 +180,22 @@ async function run() {
       }
     });
 
+      //get booked properties for admin
+      app.get("/bookings-for-admin", verifyToken, async (req, res) => {
+        try {
+          const email = req.query?.email;
+          const query = { email: email };
+          console.log(email);
+          const result = await bookingCollection.find(query).toArray();
+          console.log(result);
+          res.send(result);
+        } catch (error) {
+          console.log(error);
+        }
+      });
+
     //delete booked property
-    app.delete("/bookings/:id", async (req, res) => {
+    app.delete("/bookings/:id", verifyToken, async (req, res) => {
       try {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
@@ -161,7 +207,7 @@ async function run() {
     });
 
     // admin post new properties
-    app.post("/admin-properties", async (req, res) => {
+    app.post("/admin-properties", verifyToken, async (req, res) => {
       try {
         const property = req.body;
         const result = await propertyCollection.insertOne(property);
@@ -172,11 +218,12 @@ async function run() {
     });
 
     // get admin added properties
-    app.get("/admin-properties", async (req, res) => {
+    app.get("/admin-properties", verifyToken, async (req, res) => {
       try {
         const email = req.query?.email;
         const query = { email: email };
         const result = await propertyCollection.find(query).toArray();
+        console.log('p---->',result);
         res.send(result);
       } catch (error) {
         console.log(error);
@@ -184,7 +231,7 @@ async function run() {
     });
 
     //update property by admin
-    app.patch("/admin-properties/:id", async (req, res) => {
+    app.patch("/admin-properties/:id", verifyToken, async (req, res) => {
       try {
         const id = req.params.id;
         const property = req.body;
@@ -192,6 +239,7 @@ async function run() {
         const updatedDoc = {
           $set: {
             address: property.address,
+            picture: property.picture,
             availability_date: property.availability_date,
             bathrooms: property.bathrooms,
             bedrooms: property.bedrooms,
@@ -212,7 +260,7 @@ async function run() {
     });
 
     // admin delete properties
-    app.delete("/admin-properties/:id", async (req, res) => {
+    app.delete("/admin-properties/:id", verifyToken, async (req, res) => {
       try {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
